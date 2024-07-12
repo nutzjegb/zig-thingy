@@ -1,5 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const parser = @import("parser.zig");
 
 pub fn main() !void {
     // TODO: Add comment
@@ -24,7 +25,10 @@ pub fn main() !void {
         \\
     ;
 
-    _ = try lexer.parse_source(std.heap.page_allocator, data);
+    var tokens = try lexer.parse_source(std.heap.page_allocator, data);
+    defer tokens.clearAndFree();
+
+    _ = try parser.parse_tokens(tokens);
 }
 
 test "simple test" {
