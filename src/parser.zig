@@ -9,6 +9,12 @@ fn is_token_type(token: Token, comptime token_type: TokenTypeTag) bool {
     return @as(TokenTypeTag, token.token_type) == token_type;
 }
 
+// const Sum
+
+const Print = struct {
+    val: []const u8,
+};
+
 const Parser = struct {
     tokens: std.ArrayList(Token),
     cur_token: Token,

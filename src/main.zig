@@ -32,5 +32,5 @@ pub fn main() !void {
 }
 
 test "simple test" {
-    std.debug.assert(true);
+    try std.testing.expect(true);
 }
