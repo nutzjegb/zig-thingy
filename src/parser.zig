@@ -5,6 +5,11 @@ const TokenType = @import("lexer.zig").TokenType;
 const TokenTypeTag = @import("lexer.zig").TokenTypeTag;
 const KeyWord = @import("lexer.zig").KeyWord;
 
+const ParserError = error{
+    UnexpectedToken,
+    Todo,
+};
+
 fn is_token_type(token: Token, comptime token_type: TokenTypeTag) bool {
     return @as(TokenTypeTag, token.token_type) == token_type;
 }

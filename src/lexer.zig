@@ -1,5 +1,12 @@
 const std = @import("std");
+const stringToLowerEnum = @import("utils.zig").stringToLowerEnum;
 // const unicode = @import("std").unicode;
+
+const LexerError = error{
+    ParseError,
+    UnterminatedString,
+    Todo,
+};
 
 const Operator = enum {
     EQUALS,
@@ -59,31 +66,9 @@ pub const KeyWord = enum {
     CLASS,
     SELF,
 };
-const Keywords = [_][]const u8{
-    "if",
-    "let",
-    "def",
-    "print",
-    "input",
-    "while",
-    "and",
-    "or",
-    "undefined",
-    "class",
-    "self",
-};
-fn is_keyword(string: []const u8) bool {
-    for (Keywords) |keyword| {
-        if (std.mem.eql(u8, string, keyword)) {
-            return true;
-        }
-    }
-    return false;
-}
-fn parse_keyword(string: []const u8) !KeyWord {
-    var buf: [32]u8 = undefined;
-    const keyword = std.ascii.upperString(&buf, string);
-    return std.meta.stringToEnum(KeyWord, keyword).?;
+
+fn is_keyword(string: []const u8) ?KeyWord {
+    return stringToLowerEnum(KeyWord, string);
 }
 
 const Lexer = struct {
@@ -153,7 +138,7 @@ const Lexer = struct {
                 else => self.next_char(),
             }
             if (self.current_char.EOF) {
-                return error.unterminated_string;
+                return error.UnterminatedString;
             }
         }
     }
@@ -179,8 +164,7 @@ const Lexer = struct {
         }
         const word = self.source[start_pos.pos..self.current_char.pos];
 
-        if (is_keyword(word)) {
-            const keyword = try parse_keyword(word);
+        if (is_keyword(word)) |keyword| {
             return Token{
                 .token_type = TokenType{ .KEYWORD = keyword },
                 .line = start_pos.line,
@@ -327,7 +311,7 @@ test "nums" {
 }
 
 test "keywords" {
-    const data = "if If and undefined";
+    const data = "if If and undefined orand";
 
     var tokens = try parse_source(std.testing.allocator, data);
     defer tokens.clearAndFree();
@@ -336,9 +320,10 @@ test "keywords" {
     try std.testing.expectEqualStrings("If", tokens.items[1].token_type.IDENTIFIER);
     try std.testing.expectEqual(.AND, tokens.items[2].token_type.KEYWORD);
     try std.testing.expectEqual(.UNDEFINED, tokens.items[3].token_type.KEYWORD);
+    try std.testing.expectEqualStrings("orand", tokens.items[4].token_type.IDENTIFIER);
 
-    try std.testing.expectEqual(.EOF, tokens.items[4].token_type);
-    try std.testing.expectEqual(5, tokens.items.len);
+    try std.testing.expectEqual(.EOF, tokens.items[5].token_type);
+    try std.testing.expectEqual(6, tokens.items.len);
 }
 
 test "string" {
@@ -362,7 +347,7 @@ test "empty string" {
 test "unterminated string" {
     const data = "\"my string";
 
-    try std.testing.expectError(error.unterminated_string, parse_source(std.testing.allocator, data));
+    try std.testing.expectError(error.UnterminatedString, parse_source(std.testing.allocator, data));
 }
 
 test "operators" {
