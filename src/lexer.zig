@@ -1,14 +1,7 @@
 const std = @import("std");
 const stringToLowerEnum = @import("utils.zig").stringToLowerEnum;
-// const unicode = @import("std").unicode;
 
-const LexerError = error{
-    ParseError,
-    UnterminatedString,
-    Todo,
-};
-
-const Operator = enum {
+pub const Operator = enum {
     EQUALS,
     LESS_THAN,
     GREATER_THAN,
@@ -29,12 +22,15 @@ pub const TokenType = union(enum) {
     PLUS,
     ASSIGNMENT,
     NOT,
+    STAR,
+    SLASH,
     OPERATOR: Operator,
     IDENTIFIER: []const u8,
     STRING: []const u8,
     NUM: usize,
     KEYWORD: KeyWord,
     EOF,
+    INVALID_TOKEN: []const u8,
 };
 pub const TokenTypeTag = std.meta.Tag(TokenType);
 
@@ -112,7 +108,7 @@ const Lexer = struct {
         }
     }
 
-    fn skip_ignoreable(self: *Lexer) void {
+    fn skip_ignorable(self: *Lexer) void {
         while (true) {
             switch (self.current_char.char) {
                 '\n', ' ', '\t' => self.next_char(),
@@ -138,7 +134,11 @@ const Lexer = struct {
                 else => self.next_char(),
             }
             if (self.current_char.EOF) {
-                return error.UnterminatedString;
+                return Token{
+                    .token_type = TokenType{ .INVALID_TOKEN = "Unterminated string" },
+                    .line = start_pos.line,
+                    .col = start_pos.col,
+                };
             }
         }
     }
@@ -189,7 +189,7 @@ const Lexer = struct {
                     '>' => return self.createToken(TokenType{ .OPERATOR = .GREATER_OR_EQUAL }),
                     '!' => return self.createToken(TokenType{ .OPERATOR = .NOT_EQUALS }),
                     '=' => return self.createToken(TokenType{ .OPERATOR = .EQUALS }),
-                    else => return error.ParserError,
+                    else => return self.createToken(TokenType{ .INVALID_TOKEN = "Invalid operator" }),
                 }
             },
             else => {
@@ -198,7 +198,7 @@ const Lexer = struct {
                     '>' => return self.createToken(TokenType{ .OPERATOR = .GREATER_THAN }),
                     '!' => return self.createToken(.NOT),
                     '=' => return self.createToken(.ASSIGNMENT),
-                    else => return error.ParserError,
+                    else => return self.createToken(TokenType{ .INVALID_TOKEN = "Invalid operator" }),
                 }
             },
         }
@@ -207,35 +207,37 @@ const Lexer = struct {
     pub fn get_token(self: *Lexer) !Token {
         // Ignore comments and spaces, empty lines..
         // TODO: remove, but in loop below?
-        self.skip_ignoreable();
+        self.skip_ignorable();
         // std.debug.print("current char '{c}' i:{d} {d}:{d}\n", .{ self.current_char.char, self.current_char.pos, self.current_char.line, self.current_char.col });
 
         // Load next char
         self.next_char();
-        if (self.prev_char.?.EOF) {
-            return self.createToken(TokenType.EOF);
+        const prev_token = self.prev_char.?;
+        if (prev_token.EOF) {
+            return self.createToken(.EOF);
         }
-        const char = self.prev_char.?.char;
-        switch (char) {
-            '(' => return self.createToken(TokenType.LEFT_PAREN),
-            ')' => return self.createToken(TokenType.RIGHT_PAREN),
-            '{' => return self.createToken(TokenType.LEFT_BRACE),
-            '}' => return self.createToken(TokenType.RIGHT_BRACE),
-            '+' => return self.createToken(TokenType.PLUS),
-            '-' => return self.createToken(TokenType.MINUS),
-            ',' => return self.createToken(TokenType.COMMA),
-            ';' => return self.createToken(TokenType.SEMICOLON),
-            '.' => return self.createToken(TokenType.DOT),
+        switch (prev_token.char) {
+            '(' => return self.createToken(.LEFT_PAREN),
+            ')' => return self.createToken(.RIGHT_PAREN),
+            '{' => return self.createToken(.LEFT_BRACE),
+            '}' => return self.createToken(.RIGHT_BRACE),
+            '+' => return self.createToken(.PLUS),
+            '-' => return self.createToken(.MINUS),
+            ',' => return self.createToken(.COMMA),
+            ';' => return self.createToken(.SEMICOLON),
+            '.' => return self.createToken(.DOT),
+            '*' => return self.createToken(.STAR),
+            '/' => return self.createToken(.SLASH),
             '"' => return self.handle_string(),
             '<', '>', '!', '=' => return self.handle_operator(),
             else => {
-                if (std.ascii.isAlphabetic(char)) {
+                if (std.ascii.isAlphabetic(prev_token.char)) {
                     return self.handle_literal();
                 }
-                if (std.ascii.isDigit(char)) {
+                if (std.ascii.isDigit(prev_token.char)) {
                     return self.handle_num();
                 }
-                return error.Todo;
+                return self.createToken(TokenType{ .INVALID_TOKEN = "TODO" });
             },
         }
     }
@@ -250,6 +252,7 @@ pub fn print_token(token: Token) void {
         .OPERATOR => |v| std.debug.print("token: {s} {s}\n", .{ @tagName(token.token_type), @tagName(v) }),
         .KEYWORD => |v| std.debug.print("token: {s} {s}\n", .{ @tagName(token.token_type), @tagName(v) }),
         .NUM => |v| std.debug.print("token: {s} {d}\n", .{ @tagName(token.token_type), v }),
+        .INVALID_TOKEN => |v| std.debug.print("token: {s} '{s}'\n", .{ @tagName(token.token_type), v }),
         else => std.debug.print("token: {s}\n", .{@tagName(token.token_type)}),
     }
 }
@@ -296,7 +299,7 @@ test "simple test" {
     try std.testing.expectEqual(5, tokens.items.len);
 }
 
-test "nums" {
+test "numbers" {
     const data = "1234 0 56";
 
     var tokens = try parse_source(std.testing.allocator, data);
@@ -347,7 +350,13 @@ test "empty string" {
 test "unterminated string" {
     const data = "\"my string";
 
-    try std.testing.expectError(error.UnterminatedString, parse_source(std.testing.allocator, data));
+    var tokens = try parse_source(std.testing.allocator, data);
+    defer tokens.clearAndFree();
+
+    try std.testing.expectEqualStrings("Unterminated string", tokens.items[0].token_type.INVALID_TOKEN);
+
+    try std.testing.expectEqual(.EOF, tokens.items[1].token_type);
+    try std.testing.expectEqual(2, tokens.items.len);
 }
 
 test "operators" {
