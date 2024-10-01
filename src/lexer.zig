@@ -8,6 +8,10 @@ pub const Operator = enum {
     NOT_EQUALS,
     LESS_OR_EQUAL,
     GREATER_OR_EQUAL,
+    ADDITION,
+    SUBTRACTION,
+    MULTIPLICATION,
+    DIVIDE,
 };
 
 pub const TokenType = union(enum) {
@@ -61,6 +65,8 @@ pub const KeyWord = enum {
     UNDEFINED,
     CLASS,
     SELF,
+    TRUE,
+    FALSE,
 };
 
 fn is_keyword(string: []const u8) ?KeyWord {
@@ -120,26 +126,24 @@ const Lexer = struct {
     fn handle_string(self: *Lexer) !Token {
         const start_pos = self.current_char;
         while (true) {
-            switch (self.current_char.char) {
-                '\\' => return error.Todo,
-                '"' => {
-                    self.next_char();
-                    const word = self.source[start_pos.pos..self.prev_char.?.pos];
-                    return Token{
-                        .token_type = TokenType{ .STRING = word },
-                        .line = start_pos.line,
-                        .col = start_pos.col,
-                    };
-                },
-                else => self.next_char(),
-            }
-            if (self.current_char.EOF) {
+            // TODO: This work, sorta, but if a \" is found why should replace it
+            // But that requires allocating work..
+            if (self.current_char.char == '"' and self.prev_char.?.char != '\\') {
+                self.next_char();
+                const word = self.source[start_pos.pos..self.prev_char.?.pos];
+                return Token{
+                    .token_type = TokenType{ .STRING = word },
+                    .line = start_pos.line,
+                    .col = start_pos.col,
+                };
+            } else if (self.current_char.EOF) {
                 return Token{
                     .token_type = TokenType{ .INVALID_TOKEN = "Unterminated string" },
                     .line = start_pos.line,
                     .col = start_pos.col,
                 };
             }
+            self.next_char();
         }
     }
 
@@ -237,7 +241,7 @@ const Lexer = struct {
                 if (std.ascii.isDigit(prev_token.char)) {
                     return self.handle_num();
                 }
-                return self.createToken(TokenType{ .INVALID_TOKEN = "TODO" });
+                return self.createToken(TokenType{ .INVALID_TOKEN = "Unexpected character" });
             },
         }
     }
@@ -357,6 +361,17 @@ test "unterminated string" {
 
     try std.testing.expectEqual(.EOF, tokens.items[1].token_type);
     try std.testing.expectEqual(2, tokens.items.len);
+}
+
+test "string with quotes" {
+    const data = "\"\\\"my\\\" string\"";
+    std.debug.print("testje!!!: {s}\n", .{data});
+
+    var tokens = try parse_source(std.testing.allocator, data);
+    defer tokens.clearAndFree();
+
+    return error.SkipZigTest;
+    // try std.testing.expectEqualStrings("\"my\" string", tokens.items[0].token_type.STRING);
 }
 
 test "operators" {
