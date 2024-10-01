@@ -28,7 +28,8 @@ pub fn main() !void {
     var tokens = try lexer.parse_source(std.heap.page_allocator, data);
     defer tokens.clearAndFree();
 
-    _ = try parser.parse_tokens(tokens);
+    var statements = try parser.parse_tokens(std.heap.page_allocator, tokens);
+    defer statements.clearAndFree();
 }
 
 test "simple test" {
